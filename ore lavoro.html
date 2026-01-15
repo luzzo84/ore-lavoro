@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ore di lavoro</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    body { margin: 0; background:#f6f7fb; color:#111; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 18px; }
+    h1 { margin: 6px 0 14px; font-size: 22px; }
+    .grid { display:grid; grid-template-columns: 1fr; gap: 12px; }
+    @media (min-width: 980px){ .grid { grid-template-columns: 1.2fr .8fr; } }
+    .card { background:#fff; border:1px solid #e6e7ee; border-radius:14px; padding:14px; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
+    label { display:flex; flex-direction:column; gap:6px; font-size:12px; color:#333; }
+    input, select { border:1px solid #d7d9e5; border-radius:10px; padding:10px; font-size:14px; outline:none; background:#fff; }
+    button { border:0; border-radius:12px; padding:10px 12px; font-weight:600; cursor:pointer; }
+    .btn { background:#111; color:#fff; }
+    .btn2 { background:#eceef6; color:#111; }
+    .btnDanger { background:#ffebe9; color:#8a0f0f; }
+    .muted { color:#666; font-size:12px; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { border-bottom:1px solid #eee; padding:8px 6px; text-align:left; vertical-align:top; }
+    th { font-size:12px; color:#555; }
+    .right { text-align:right; }
+    .kpi { display:flex; gap:10px; flex-wrap:wrap; }
+    .kpi .card { flex:1; min-width: 180px; }
+    .big { font-size:20px; font-weight:800; }
+    .badge { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; background:#f0f2fa; font-size:12px; }
+    .twoCols { display:grid; grid-template-columns: 1fr; gap: 10px; }
+    @media (min-width: 980px){ .twoCols { grid-template-columns: 1fr 1fr; } }
+    .smallBtn { padding:7px 10px; border-radius:10px; font-weight:700; }
+    .sticky { position: sticky; top: 0; background: white; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Ore di lavoro</h1>
+
+    <div class="grid">
+      <div class="card">
+        <div class="row">
+          <label style="flex:1; min-width:220px;">
+            Azienda / Cliente
+            <select id="clienteSelect"></select>
+          </label>
+
+          <label style="min-width:240px; flex:1;">
+            Aggiungi nuovo cliente
+            <div class="row" style="gap:8px; align-items:center;">
+              <input id="nuovoCliente" placeholder="Es. Cliente X" style="flex:1; min-width:180px;" />
+              <button class="btn2" id="btnAddCliente">Aggiungi</button>
+            </div>
+          </label>
+
+          <label style="flex:1; min-width:220px;">
+            Progetto
+            <input id="progetto" placeholder="Es. Modello VR appartamento" />
+          </label>
+
+          <label style="flex:1; min-width:220px;">
+            Attività
+            <input id="attivita" placeholder="Es. Modellazione, call, rendering..." />
+          </label>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <label>
+            Data
+            <input id="data" type="date" />
+          </label>
+          <label>
+            Ore
+            <input id="ore" type="number" min="0" step="1" value="0" style="width:120px;" />
+          </label>
+          <label>
+            Minuti
+            <input id="minuti" type="number" min="0" max="59" step="5" value="0" style="width:120px;" />
+          </label>
+          <label style="flex:1; min-width:240px;">
+            Note
+            <input id="note" placeholder="Facoltative" />
+          </label>
+        </div>
+
+        <div class="row" style="margin-top:12px;">
+          <button class="btn" id="btnAggiungi">Aggiungi riga</button>
+          <span class="badge">Modifica: usa <b>Modifica</b> nella tabella</span>
+        </div>
+
+        <div class="row" style="margin-top:14px;">
+          <label>
+            Filtro periodo
+            <select id="periodo">
+              <option value="oggi">Oggi</option>
+              <option value="settimana">Questa settimana</option>
+              <option value="mese">Questo mese</option>
+              <option value="tutto">Tutto</option>
+            </select>
+          </label>
+          <label>
+            Cerca (azienda/progetto/attività/note)
+            <input id="cerca" placeholder="Scrivi qui..." style="min-width:280px;" />
+          </label>
+          <div style="flex:1;"></div>
+          <button class="btn2" id="btnCSV">Esporta CSV</button>
+          <button class="btnDanger" id="btnPulisci">Svuota tutto</button>
+        </div>
+      </div>
+
+      <div class="kpi">
+        <div class="card">
+          <div class="muted">Totale periodo (filtri inclusi)</div>
+          <div class="big" id="totPeriodo">0h 00m</div>
+          <div class="muted" id="kpiInfo"></div>
+        </div>
+        <div class="card">
+          <div class="muted">Oggi</div>
+          <div class="big" id="totOggi">0h 00m</div>
+        </div>
+        <div class="card">
+          <div class="muted">Questa settimana</div>
+          <div class="big" id="totSettimana">0h 00m</div>
+        </div>
+        <div class="card">
+          <div class="muted">Questo mese</div>
+          <div class="big" id="totMese">0h 00m</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="twoCols" style="margin-top:12px;">
+      <div class="card">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-weight:800;">Totale ore per azienda</div>
+            <div class="muted">Rispetta i filtri (periodo + cerca)</div>
+          </div>
+          <button class="btn2 smallBtn" id="btnCSVPerAzienda">CSV per azienda</button>
+        </div>
+        <div style="overflow:auto; margin-top:10px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Azienda</th>
+                <th class="right">Ore</th>
+                <th class="right">Righe</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyAziende"></tbody>
+          </table>
+        </div>
+        <div class="muted" id="msgAziende" style="margin-top:8px;"></div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:800;">Formato inserimento</div>
+        <div class="muted" style="margin-top:6px;">
+          Inserisci direttamente la durata: <b>Ore</b> e <b>Minuti</b> (0–59).<br/>
+          Esempio: <b>1</b> ora e <b>30</b> minuti.
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="muted" style="margin-bottom:8px;">
+        Tabella righe (usa <b>Modifica</b> per cambiare i dati già inseriti).
+      </div>
+      <div style="overflow:auto;">
+        <table>
+          <thead class="sticky">
+            <tr>
+              <th>Data</th>
+              <th>Azienda</th>
+              <th>Progetto</th>
+              <th>Attività</th>
+              <th class="right">Durata</th>
+              <th>Note</th>
+              <th class="right">Azioni</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="muted" id="msg" style="margin-top:8px;"></div>
+    </div>
+
+  </div>
+
+<script>
+  // Dati ore
+  const LS_KEY_ROWS = "ore_lavoro_v2_durata";
+  // Clienti (persistenti)
+  const LS_KEY_CLIENTS = "ore_lavoro_clienti_v1";
+
+  const DEFAULT_CLIENTS = ["Metalfresa", "Waw", "Lam", "Rimec"];
+
+  const el = (id) => document.getElementById(id);
+
+  const state = {
+    rows: [],
+    editingId: null,
+    clients: []
+  };
+
+  function pad2(n){ return String(n).padStart(2,"0"); }
+
+  function todayISO(){
+    const d = new Date();
+    return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate());
+  }
+
+  function minutesToHM(min){
+    const h = Math.floor(min/60);
+    const m = Math.round(min%60);
+    return `${h}h ${pad2(m)}m`;
+  }
+
+  function durationMinutes(r){
+    const h = Number(r.ore||0);
+    const m = Number(r.minuti||0);
+    return Math.max(0, h*60 + m);
+  }
+
+  function saveRows(){
+    localStorage.setItem(LS_KEY_ROWS, JSON.stringify(state.rows));
+  }
+  function loadRows(){
+    try { state.rows = JSON.parse(localStorage.getItem(LS_KEY_ROWS) || "[]") || []; }
+    catch { state.rows = []; }
+  }
+
+  function saveClients(){
+    localStorage.setItem(LS_KEY_CLIENTS, JSON.stringify(state.clients));
+  }
+  function loadClients(){
+    try {
+      const x = JSON.parse(localStorage.getItem(LS_KEY_CLIENTS) || "null");
+      if(Array.isArray(x) && x.length) state.clients = x.map(s=>String(s)).filter(Boolean);
+      else state.clients = [...DEFAULT_CLIENTS];
+    } catch {
+      state.clients = [...DEFAULT_CLIENTS];
+    }
+    // dedup + sort “umana” (mette i default comunque)
+    const merged = [...DEFAULT_CLIENTS, ...state.clients].map(s=>String(s).trim()).filter(Boolean);
+    state.clients = Array.from(new Set(merged));
+    saveClients();
+  }
+
+  function renderClients(selectedValue){
+    const sel = el("clienteSelect");
+    const current = selectedValue ?? sel.value ?? "";
+    sel.innerHTML = "";
+
+    for(const c of state.clients){
+      const opt = document.createElement("option");
+      opt.value = c;
+      opt.textContent = c;
+      sel.appendChild(opt);
+    }
+
+    // se current non è in lista, lo aggiungo (per compat con righe vecchie)
+    if(current && !state.clients.includes(current)){
+      state.clients.push(current);
+      state.clients = Array.from(new Set(state.clients));
+      saveClients();
+      // ricostruisco
+      renderClients(current);
+      return;
+    }
+
+    sel.value = current || (state.clients[0] || "");
+  }
+
+  function addClient(name){
+    const n = String(name||"").trim();
+    if(!n) return false;
+    if(state.clients.includes(n)) return false;
+    state.clients.push(n);
+    saveClients();
+    renderClients(n);
+    return true;
+  }
+
+  function startOfWeek(d){
+    const x = new Date(d);
+    const day = (x.getDay()+6)%7; // Monday=0
+    x.setHours(0,0,0,0);
+    x.setDate(x.getDate()-day);
+    return x;
+  }
+
+  function startOfMonth(d){
+    const x = new Date(d);
+    x.setHours(0,0,0,0);
+    x.setDate(1);
+    return x;
+  }
+
+  function inPeriod(row, periodo){
+    if(periodo === "tutto") return true;
+    const rowDate = new Date(row.data+"T00:00:00");
+    const now = new Date();
+    now.setHours(0,0,0,0);
+
+    if(periodo === "oggi") return row.data === todayISO();
+
+    if(periodo === "settimana"){
+      const s = startOfWeek(now);
+      const e = new Date(s); e.setDate(e.getDate()+7);
+      return rowDate >= s && rowDate < e;
+    }
+
+    if(periodo === "mese"){
+      const s = startOfMonth(now);
+      const e = new Date(s); e.setMonth(e.getMonth()+1);
+      return rowDate >= s && rowDate < e;
+    }
+
+    return true;
+  }
+
+  function matchesSearch(row, q){
+    if(!q) return true;
+    q = q.toLowerCase();
+    return [row.cliente,row.progetto,row.attivita,row.note]
+      .filter(Boolean)
+      .some(v => String(v).toLowerCase().includes(q));
+  }
+
+  function escapeHtml(str){
+    return String(str)
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
+  function escapeAttr(str){
+    return String(str)
+      .replaceAll("&","&amp;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;");
+  }
+
+  function makeId(){
+    return Math.random().toString(16).slice(2) + Date.now().toString(16);
+  }
+
+  function normalizeDuration(h, m){
+    h = Number(h||0); m = Number(m||0);
+    if(m >= 60){ h += Math.floor(m/60); m = m % 60; }
+    if(m < 0) m = 0;
+    if(h < 0) h = 0;
+    return {ore: h, minuti: m};
+  }
+
+  function validateRow(r){
+    if(!r.data) return "Manca la data.";
+    const dur = durationMinutes(r);
+    if(dur <= 0) return "Durata deve essere > 0 (ore/minuti).";
+    return null;
+  }
+
+  function filteredRows(){
+    const periodo = el("periodo").value;
+    const q = el("cerca").value.trim();
+    return state.rows
+      .slice()
+      .sort((a,b)=> (a.data).localeCompare(b.data))
+      .filter(r => inPeriod(r, periodo))
+      .filter(r => matchesSearch(r, q));
+  }
+
+  function sumFor(periodo){
+    return state.rows
+      .filter(r => inPeriod(r, periodo))
+      .reduce((acc,r)=> acc + durationMinutes(r), 0);
+  }
+
+  function renderByCompany(rows){
+    const map = new Map();
+    for(const r of rows){
+      const c = (r.cliente || "").trim() || "(Senza azienda)";
+      const cur = map.get(c) || {min:0, count:0};
+      cur.min += durationMinutes(r);
+      cur.count += 1;
+      map.set(c, cur);
+    }
+
+    const items = Array.from(map.entries())
+      .map(([azienda, v]) => ({azienda, min:v.min, count:v.count}))
+      .sort((a,b)=> b.min - a.min || a.azienda.localeCompare(b.azienda));
+
+    const tbody = el("tbodyAziende");
+    tbody.innerHTML = "";
+
+    let tot = 0;
+    for(const it of items){
+      tot += it.min;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(it.azienda)}</td>
+        <td class="right"><b>${minutesToHM(it.min)}</b></td>
+        <td class="right">${it.count}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    el("msgAziende").textContent = items.length
+      ? `Totale per aziende: ${minutesToHM(tot)}`
+      : `Nessuna riga nel periodo/ricerca selezionati.`;
+  }
+
+  function render(){
+    // mantiene il cliente selezionato
+    renderClients();
+
+    const rows = filteredRows();
+
+    const total = rows.reduce((acc,r)=> acc + durationMinutes(r), 0);
+    el("totPeriodo").textContent = minutesToHM(total);
+    el("kpiInfo").textContent = `${rows.length} righe nel periodo selezionato`;
+
+    el("totOggi").textContent = minutesToHM(sumFor("oggi"));
+    el("totSettimana").textContent = minutesToHM(sumFor("settimana"));
+    el("totMese").textContent = minutesToHM(sumFor("mese"));
+
+    const tbody = el("tbody");
+    tbody.innerHTML = "";
+
+    for(const r of rows){
+      // se una riga ha un cliente non presente, lo aggiungo alla lista
+      if(r.cliente && !state.clients.includes(r.cliente)){
+        state.clients.push(r.cliente);
+        state.clients = Array.from(new Set(state.clients));
+        saveClients();
+      }
+
+      const durTxt = minutesToHM(durationMinutes(r));
+      const isEditing = state.editingId === r.id;
+
+      const tr = document.createElement("tr");
+
+      if(!isEditing){
+        tr.innerHTML = `
+          <td>${r.data || ""}</td>
+          <td>${escapeHtml(r.cliente||"")}</td>
+          <td>${escapeHtml(r.progetto||"")}</td>
+          <td>${escapeHtml(r.attivita||"")}</td>
+          <td class="right"><b>${durTxt}</b></td>
+          <td>${escapeHtml(r.note||"")}</td>
+          <td class="right">
+            <button class="btn2 smallBtn" data-act="edit" data-id="${r.id}">Modifica</button>
+            <button class="btn2 smallBtn" data-act="dup" data-id="${r.id}">Dup</button>
+            <button class="btnDanger smallBtn" data-act="del" data-id="${r.id}">Elimina</button>
+          </td>
+        `;
+      } else {
+        tr.innerHTML = `
+          <td><input data-f="data" type="date" value="${r.data||""}" style="padding:7px; border-radius:10px; width:145px;"></td>
+
+          <td>
+            <select data-f="cliente" style="padding:7px; border-radius:10px; min-width:160px;">
+              ${state.clients.map(c => `<option value="${escapeAttr(c)}"${c===r.cliente?' selected':''}>${escapeHtml(c)}</option>`).join("")}
+            </select>
+          </td>
+
+          <td><input data-f="progetto" value="${escapeAttr(r.progetto||"")}" style="padding:7px; border-radius:10px; min-width:160px;"></td>
+          <td><input data-f="attivita" value="${escapeAttr(r.attivita||"")}" style="padding:7px; border-radius:10px; min-width:160px;"></td>
+
+          <td class="right">
+            <div style="display:flex; gap:6px; justify-content:flex-end; align-items:center;">
+              <input data-f="ore" type="number" min="0" step="1" value="${Number(r.ore||0)}" style="padding:7px; border-radius:10px; width:85px;">
+              <span class="muted">h</span>
+              <input data-f="minuti" type="number" min="0" step="5" value="${Number(r.minuti||0)}" style="padding:7px; border-radius:10px; width:85px;">
+              <span class="muted">m</span>
+            </div>
+          </td>
+
+          <td><input data-f="note" value="${escapeAttr(r.note||"")}" style="padding:7px; border-radius:10px; min-width:200px;"></td>
+
+          <td class="right">
+            <button class="btn smallBtn" data-act="save" data-id="${r.id}">Salva</button>
+            <button class="btn2 smallBtn" data-act="cancel" data-id="${r.id}">Annulla</button>
+          </td>
+        `;
+      }
+
+      tbody.appendChild(tr);
+    }
+
+    el("msg").textContent = `${rows.length} righe mostrate (su ${state.rows.length} totali).`;
+
+    renderByCompany(rows);
+  }
+
+  function addRow(){
+    const dur = normalizeDuration(el("ore").value, el("minuti").value);
+    const cliente = el("clienteSelect").value || "";
+
+    const row = {
+      id: makeId(),
+      cliente: cliente,
+      progetto: el("progetto").value.trim(),
+      attivita: el("attivita").value.trim(),
+      data: el("data").value,
+      ore: dur.ore,
+      minuti: dur.minuti,
+      note: el("note").value.trim()
+    };
+
+    const err = validateRow(row);
+    if(err){ alert(err); return; }
+
+    state.rows.push(row);
+    saveRows();
+
+    // reset campi “durata” e note
+    el("note").value = "";
+    el("ore").value = "0";
+    el("minuti").value = "0";
+
+    render();
+  }
+
+  function clearAll(){
+    if(!confirm("Sicuro di voler cancellare TUTTO?")) return;
+    state.rows = [];
+    state.editingId = null;
+    saveRows();
+    render();
+  }
+
+  function dupRow(id){
+    const r = state.rows.find(x=>x.id===id);
+    if(!r) return;
+    state.rows.push({...r, id: makeId()});
+    saveRows();
+    render();
+  }
+
+  function delRow(id){
+    state.rows = state.rows.filter(x=>x.id!==id);
+    if(state.editingId === id) state.editingId = null;
+    saveRows();
+    render();
+  }
+
+  function beginEdit(id){
+    state.editingId = id;
+    render();
+  }
+
+  function cancelEdit(){
+    state.editingId = null;
+    render();
+  }
+
+  function saveEdit(id, tr){
+    const r = state.rows.find(x=>x.id===id);
+    if(!r) return;
+
+    const updated = {...r};
+
+    // input + select
+    const fields = tr.querySelectorAll("[data-f]");
+    fields.forEach(node=>{
+      const f = node.getAttribute("data-f");
+      if(f === "ore" || f === "minuti") updated[f] = Number(node.value || 0);
+      else updated[f] = (node.value ?? "").trim();
+    });
+
+    const dur = normalizeDuration(updated.ore, updated.minuti);
+    updated.ore = dur.ore;
+    updated.minuti = dur.minuti;
+
+    const err = validateRow(updated);
+    if(err){ alert(err); return; }
+
+    // se cliente nuovo, lo salvo
+    if(updated.cliente && !state.clients.includes(updated.cliente)){
+      addClient(updated.cliente);
+    }
+
+    Object.assign(r, updated);
+    state.editingId = null;
+    saveRows();
+    render();
+  }
+
+  function downloadText(filename, text, mime){
+    const blob = new Blob([text], {type: mime});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportCSV(){
+    const headers = ["data","azienda","progetto","attivita","ore","minuti","durata_min","note"];
+    const lines = [headers.join(",")];
+    for(const r of state.rows){
+      const d = durationMinutes(r);
+      const fields = [
+        r.data, r.cliente, r.progetto, r.attivita,
+        String(Number(r.ore||0)), String(Number(r.minuti||0)),
+        String(d), r.note
+      ].map(v => `"${String(v??"").replaceAll('"','""')}"`);
+      lines.push(fields.join(","));
+    }
+    downloadText("ore_lavoro.csv", lines.join("\n"), "text/csv;charset=utf-8");
+  }
+
+  function exportCSVByCompany(){
+    const rows = filteredRows();
+    const map = new Map();
+    for(const r of rows){
+      const c = (r.cliente || "").trim() || "(Senza azienda)";
+      const cur = map.get(c) || {min:0, count:0};
+      cur.min += durationMinutes(r);
+      cur.count += 1;
+      map.set(c, cur);
+    }
+    const items = Array.from(map.entries())
+      .map(([azienda, v]) => ({azienda, min:v.min, count:v.count}))
+      .sort((a,b)=> b.min - a.min || a.azienda.localeCompare(b.azienda));
+
+    const lines = ["azienda,ore,righe"];
+    for(const it of items){
+      const ore = (it.min/60).toFixed(2).replace(".", ",");
+      lines.push(`"${it.azienda.replaceAll('"','""')}",${ore},${it.count}`);
+    }
+    downloadText("ore_per_azienda.csv", lines.join("\n"), "text/csv;charset=utf-8");
+  }
+
+  function init(){
+    loadClients();
+    loadRows();
+
+    el("data").value = todayISO();
+    el("ore").value = "0";
+    el("minuti").value = "0";
+
+    // Popola menu clienti
+    renderClients(state.clients[0] || "");
+
+    // Aggiungi cliente
+    el("btnAddCliente").addEventListener("click", ()=>{
+      const name = el("nuovoCliente").value;
+      const ok = addClient(name);
+      if(ok){
+        el("nuovoCliente").value = "";
+      } else {
+        if(String(name||"").trim() === "") alert("Scrivi un nome cliente.");
+        else alert("Cliente già presente.");
+      }
+    });
+
+    // ENTER nel campo nuovo cliente
+    el("nuovoCliente").addEventListener("keydown", (e)=>{
+      if(e.key === "Enter"){
+        e.preventDefault();
+        el("btnAddCliente").click();
+      }
+    });
+
+    el("btnAggiungi").addEventListener("click", addRow);
+    el("btnCSV").addEventListener("click", exportCSV);
+    el("btnCSVPerAzienda").addEventListener("click", exportCSVByCompany);
+    el("btnPulisci").addEventListener("click", clearAll);
+
+    el("periodo").addEventListener("change", render);
+    el("cerca").addEventListener("input", render);
+
+    el("tbody").addEventListener("click", (e)=>{
+      const b = e.target.closest("button");
+      if(!b) return;
+      const act = b.getAttribute("data-act");
+      const id = b.getAttribute("data-id");
+
+      if(act==="del") delRow(id);
+      if(act==="dup") dupRow(id);
+      if(act==="edit") beginEdit(id);
+      if(act==="cancel") cancelEdit();
+      if(act==="save"){
+        const tr = b.closest("tr");
+        saveEdit(id, tr);
+      }
+    });
+
+    render();
+  }
+
+  init();
+</script>
+</body>
+</html>
