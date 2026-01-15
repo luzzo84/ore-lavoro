@@ -32,6 +32,8 @@
     @media (min-width: 980px){ .twoCols { grid-template-columns: 1fr 1fr; } }
     .smallBtn { padding:7px 10px; border-radius:10px; font-weight:700; }
     .sticky { position: sticky; top: 0; background: white; }
+    .statusOk { color:#0f6b2f; font-weight:700; }
+    .statusWarn { color:#8a0f0f; font-weight:700; }
   </style>
 </head>
 <body>
@@ -103,9 +105,16 @@
             Cerca (azienda/progetto/attività/note)
             <input id="cerca" placeholder="Scrivi qui..." style="min-width:280px;" />
           </label>
+
           <div style="flex:1;"></div>
+
+          <button class="btn2" id="btnSync">Sincronizza</button>
           <button class="btn2" id="btnCSV">Esporta CSV</button>
           <button class="btnDanger" id="btnPulisci">Svuota tutto</button>
+        </div>
+
+        <div class="muted" id="syncStatus" style="margin-top:10px;">
+          Stato sync: <span class="statusWarn">non ancora sincronizzato</span>
         </div>
       </div>
 
@@ -189,10 +198,16 @@
   </div>
 
 <script>
-  // Dati ore
+  // ======= CONFIG SHEET SYNC =======
+  const API_URL = "https://script.google.com/macros/s/AKfycbykqsP5bsHhPw2pm5mhuw1Kx9rSo61F7jqXpExsC1LMePUdsRRZ9ujAtERgPWl90NLe/exec";
+  const API_TOKEN = "1qaz2wsx";
+
+  // Dati ore (backup locale)
   const LS_KEY_ROWS = "ore_lavoro_v2_durata";
-  // Clienti (persistenti)
+  // Clienti (persistenti) - restano locali, ma vengono “auto-arricchiti” dai dati sincronizzati
   const LS_KEY_CLIENTS = "ore_lavoro_clienti_v1";
+  // Outbox per operazioni offline
+  const LS_KEY_OUTBOX = "ore_lavoro_outbox_v1";
 
   const DEFAULT_CLIENTS = ["Metalfresa", "Waw", "Lam", "Rimec"];
 
@@ -201,8 +216,15 @@
   const state = {
     rows: [],
     editingId: null,
-    clients: []
+    clients: [],
+    outbox: []
   };
+
+  function setSyncStatus(html, ok=false){
+    const s = el("syncStatus");
+    if(!s) return;
+    s.innerHTML = `Stato sync: ${ok ? `<span class="statusOk">${html}</span>` : `<span class="statusWarn">${html}</span>`}`;
+  }
 
   function pad2(n){ return String(n).padStart(2,"0"); }
 
@@ -223,6 +245,7 @@
     return Math.max(0, h*60 + m);
   }
 
+  // ======= Local storage =======
   function saveRows(){
     localStorage.setItem(LS_KEY_ROWS, JSON.stringify(state.rows));
   }
@@ -242,12 +265,68 @@
     } catch {
       state.clients = [...DEFAULT_CLIENTS];
     }
-    // dedup + sort “umana” (mette i default comunque)
     const merged = [...DEFAULT_CLIENTS, ...state.clients].map(s=>String(s).trim()).filter(Boolean);
     state.clients = Array.from(new Set(merged));
     saveClients();
   }
 
+  function saveOutbox(){
+    localStorage.setItem(LS_KEY_OUTBOX, JSON.stringify(state.outbox));
+  }
+  function loadOutbox(){
+    try { state.outbox = JSON.parse(localStorage.getItem(LS_KEY_OUTBOX) || "[]") || []; }
+    catch { state.outbox = []; }
+  }
+
+  // ======= Cloud API =======
+  async function apiGetRows(){
+    const url = `${API_URL}?token=${encodeURIComponent(API_TOKEN)}`;
+    const res = await fetch(url, { method:"GET" });
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || "GET failed");
+    return data.rows || [];
+  }
+
+  async function apiUpsertRow(row){
+    const payload = {
+      token: API_TOKEN,
+      action: "upsert",
+      row: {
+        id: row.id,
+        data: row.data,
+        azienda: row.cliente,
+        progetto: row.progetto,
+        attivita: row.attivita,
+        ore: Number(row.ore||0),
+        minuti: Number(row.minuti||0),
+        note: row.note || "",
+        createdAt: row.createdAt || "",
+        updatedAt: row.updatedAt || ""
+      }
+    };
+    const res = await fetch(API_URL, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || "UPSERT failed");
+    return data;
+  }
+
+  async function apiDeleteRow(id){
+    const payload = { token: API_TOKEN, action:"delete", id };
+    const res = await fetch(API_URL, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || "DELETE failed");
+    return data;
+  }
+
+  // ======= Helpers =======
   function renderClients(selectedValue){
     const sel = el("clienteSelect");
     const current = selectedValue ?? sel.value ?? "";
@@ -260,12 +339,10 @@
       sel.appendChild(opt);
     }
 
-    // se current non è in lista, lo aggiungo (per compat con righe vecchie)
     if(current && !state.clients.includes(current)){
       state.clients.push(current);
       state.clients = Array.from(new Set(state.clients));
       saveClients();
-      // ricostruisco
       renderClients(current);
       return;
     }
@@ -285,7 +362,7 @@
 
   function startOfWeek(d){
     const x = new Date(d);
-    const day = (x.getDay()+6)%7; // Monday=0
+    const day = (x.getDay()+6)%7;
     x.setHours(0,0,0,0);
     x.setDate(x.getDate()-day);
     return x;
@@ -415,9 +492,7 @@
   }
 
   function render(){
-    // mantiene il cliente selezionato
     renderClients();
-
     const rows = filteredRows();
 
     const total = rows.reduce((acc,r)=> acc + durationMinutes(r), 0);
@@ -432,7 +507,6 @@
     tbody.innerHTML = "";
 
     for(const r of rows){
-      // se una riga ha un cliente non presente, lo aggiungo alla lista
       if(r.cliente && !state.clients.includes(r.cliente)){
         state.clients.push(r.cliente);
         state.clients = Array.from(new Set(state.clients));
@@ -461,16 +535,13 @@
       } else {
         tr.innerHTML = `
           <td><input data-f="data" type="date" value="${r.data||""}" style="padding:7px; border-radius:10px; width:145px;"></td>
-
           <td>
             <select data-f="cliente" style="padding:7px; border-radius:10px; min-width:160px;">
               ${state.clients.map(c => `<option value="${escapeAttr(c)}"${c===r.cliente?' selected':''}>${escapeHtml(c)}</option>`).join("")}
             </select>
           </td>
-
           <td><input data-f="progetto" value="${escapeAttr(r.progetto||"")}" style="padding:7px; border-radius:10px; min-width:160px;"></td>
           <td><input data-f="attivita" value="${escapeAttr(r.attivita||"")}" style="padding:7px; border-radius:10px; min-width:160px;"></td>
-
           <td class="right">
             <div style="display:flex; gap:6px; justify-content:flex-end; align-items:center;">
               <input data-f="ore" type="number" min="0" step="1" value="${Number(r.ore||0)}" style="padding:7px; border-radius:10px; width:85px;">
@@ -479,25 +550,147 @@
               <span class="muted">m</span>
             </div>
           </td>
-
           <td><input data-f="note" value="${escapeAttr(r.note||"")}" style="padding:7px; border-radius:10px; min-width:200px;"></td>
-
           <td class="right">
             <button class="btn smallBtn" data-act="save" data-id="${r.id}">Salva</button>
             <button class="btn2 smallBtn" data-act="cancel" data-id="${r.id}">Annulla</button>
           </td>
         `;
       }
-
       tbody.appendChild(tr);
     }
 
     el("msg").textContent = `${rows.length} righe mostrate (su ${state.rows.length} totali).`;
-
     renderByCompany(rows);
   }
 
-  function addRow(){
+  // ======= Sync logic =======
+  function toLocalRowFromSheet(s){
+    return {
+      id: String(s.id || ""),
+      cliente: String(s.azienda || s.cliente || ""),
+      progetto: String(s.progetto || ""),
+      attivita: String(s.attivita || ""),
+      data: String(s.data || ""),
+      ore: Number(s.ore || 0),
+      minuti: Number(s.minuti || 0),
+      note: String(s.note || ""),
+      createdAt: s.createdAt ? String(s.createdAt) : "",
+      updatedAt: s.updatedAt ? String(s.updatedAt) : ""
+    };
+  }
+
+  function mergeCloudIntoLocal(cloudRows){
+    const map = new Map(state.rows.map(r => [r.id, r]));
+    for(const cr of cloudRows){
+      if(!cr.id) continue;
+      const existing = map.get(cr.id);
+      if(!existing){
+        state.rows.push(cr);
+      } else {
+        // se cloud è "più nuovo" (best-effort), sovrascrivi; altrimenti tieni locale
+        const lu = String(existing.updatedAt || "");
+        const cu = String(cr.updatedAt || "");
+        if(cu && (!lu || cu >= lu)){
+          Object.assign(existing, cr);
+        }
+      }
+    }
+    saveRows();
+  }
+
+  function queueOp(op){
+    state.outbox.push(op);
+    saveOutbox();
+  }
+
+  async function flushOutbox(){
+    if(state.outbox.length === 0) return {sent:0};
+    let sent = 0;
+    const remaining = [];
+
+    for(const op of state.outbox){
+      try{
+        if(op.type === "upsert"){
+          await apiUpsertRow(op.row);
+          sent++;
+        } else if(op.type === "delete"){
+          await apiDeleteRow(op.id);
+          sent++;
+        } else {
+          // ignora sconosciuti
+          sent++;
+        }
+      } catch(err){
+        remaining.push(op); // resta in coda
+      }
+    }
+
+    state.outbox = remaining;
+    saveOutbox();
+    return {sent};
+  }
+
+  async function syncNow(){
+    try{
+      setSyncStatus("sincronizzazione in corso…", false);
+
+      // 1) invia coda offline
+      const {sent} = await flushOutbox();
+
+      // 2) scarica righe da cloud
+      const raw = await apiGetRows();
+      const cloud = raw.map(toLocalRowFromSheet);
+
+      // 3) merge
+      mergeCloudIntoLocal(cloud);
+
+      // 4) aggiorna lista clienti con quelli trovati
+      for(const r of state.rows){
+        if(r.cliente && !state.clients.includes(r.cliente)){
+          state.clients.push(r.cliente);
+        }
+      }
+      state.clients = Array.from(new Set([...DEFAULT_CLIENTS, ...state.clients].map(s=>String(s).trim()).filter(Boolean)));
+      saveClients();
+
+      render();
+      const pending = state.outbox.length;
+      setSyncStatus(`ok. Cloud aggiornato. Operazioni inviate: ${sent}. In coda: ${pending}`, true);
+    } catch(err){
+      render();
+      setSyncStatus(`offline o errore: ${escapeHtml(String(err.message||err))}. In coda: ${state.outbox.length}`, false);
+    }
+  }
+
+  // ======= CRUD with cloud (best-effort) =======
+  async function upsertWithQueue(row){
+    // aggiorna timestamps
+    const now = new Date().toISOString();
+    row.updatedAt = now;
+    if(!row.createdAt) row.createdAt = now;
+
+    try{
+      await apiUpsertRow(row);
+      setSyncStatus("ok (salvato su cloud)", true);
+    } catch(err){
+      queueOp({type:"upsert", row: {...row}});
+      setSyncStatus(`offline: salvato in coda (${state.outbox.length})`, false);
+    }
+  }
+
+  async function deleteWithQueue(id){
+    try{
+      await apiDeleteRow(id);
+      setSyncStatus("ok (eliminato su cloud)", true);
+    } catch(err){
+      queueOp({type:"delete", id});
+      setSyncStatus(`offline: delete in coda (${state.outbox.length})`, false);
+    }
+  }
+
+  // ======= UI actions =======
+  async function addRow(){
     const dur = normalizeDuration(el("ore").value, el("minuti").value);
     const cliente = el("clienteSelect").value || "";
 
@@ -509,7 +702,9 @@
       data: el("data").value,
       ore: dur.ore,
       minuti: dur.minuti,
-      note: el("note").value.trim()
+      note: el("note").value.trim(),
+      createdAt: "",
+      updatedAt: ""
     };
 
     const err = validateRow(row);
@@ -517,36 +712,51 @@
 
     state.rows.push(row);
     saveRows();
+    render();
 
-    // reset campi “durata” e note
+    // reset campi
     el("note").value = "";
     el("ore").value = "0";
     el("minuti").value = "0";
 
-    render();
+    // tenta cloud (o mette in coda)
+    await upsertWithQueue(row);
   }
 
-  function clearAll(){
-    if(!confirm("Sicuro di voler cancellare TUTTO?")) return;
+  async function clearAll(){
+    if(!confirm("Sicuro di voler cancellare TUTTO? (anche su cloud)")) return;
+
+    // elimina su cloud tutte le righe che conosciamo
+    const ids = state.rows.map(r=>r.id).filter(Boolean);
     state.rows = [];
     state.editingId = null;
     saveRows();
     render();
+
+    // metti in coda delete (offline-safe)
+    for(const id of ids){
+      queueOp({type:"delete", id});
+    }
+    saveOutbox();
+    await syncNow();
   }
 
   function dupRow(id){
     const r = state.rows.find(x=>x.id===id);
     if(!r) return;
-    state.rows.push({...r, id: makeId()});
+    const copy = {...r, id: makeId(), createdAt:"", updatedAt:""};
+    state.rows.push(copy);
     saveRows();
     render();
+    upsertWithQueue(copy);
   }
 
-  function delRow(id){
+  async function delRow(id){
     state.rows = state.rows.filter(x=>x.id!==id);
     if(state.editingId === id) state.editingId = null;
     saveRows();
     render();
+    await deleteWithQueue(id);
   }
 
   function beginEdit(id){
@@ -559,13 +769,12 @@
     render();
   }
 
-  function saveEdit(id, tr){
+  async function saveEdit(id, tr){
     const r = state.rows.find(x=>x.id===id);
     if(!r) return;
 
     const updated = {...r};
 
-    // input + select
     const fields = tr.querySelectorAll("[data-f]");
     fields.forEach(node=>{
       const f = node.getAttribute("data-f");
@@ -580,7 +789,6 @@
     const err = validateRow(updated);
     if(err){ alert(err); return; }
 
-    // se cliente nuovo, lo salvo
     if(updated.cliente && !state.clients.includes(updated.cliente)){
       addClient(updated.cliente);
     }
@@ -589,6 +797,8 @@
     state.editingId = null;
     saveRows();
     render();
+
+    await upsertWithQueue(r);
   }
 
   function downloadText(filename, text, mime){
@@ -640,18 +850,17 @@
     downloadText("ore_per_azienda.csv", lines.join("\n"), "text/csv;charset=utf-8");
   }
 
-  function init(){
+  async function init(){
     loadClients();
     loadRows();
+    loadOutbox();
 
     el("data").value = todayISO();
     el("ore").value = "0";
     el("minuti").value = "0";
 
-    // Popola menu clienti
     renderClients(state.clients[0] || "");
 
-    // Aggiungi cliente
     el("btnAddCliente").addEventListener("click", ()=>{
       const name = el("nuovoCliente").value;
       const ok = addClient(name);
@@ -663,7 +872,6 @@
       }
     });
 
-    // ENTER nel campo nuovo cliente
     el("nuovoCliente").addEventListener("keydown", (e)=>{
       if(e.key === "Enter"){
         e.preventDefault();
@@ -671,10 +879,11 @@
       }
     });
 
-    el("btnAggiungi").addEventListener("click", addRow);
+    el("btnAggiungi").addEventListener("click", ()=> addRow());
     el("btnCSV").addEventListener("click", exportCSV);
     el("btnCSVPerAzienda").addEventListener("click", exportCSVByCompany);
-    el("btnPulisci").addEventListener("click", clearAll);
+    el("btnPulisci").addEventListener("click", ()=> clearAll());
+    el("btnSync").addEventListener("click", ()=> syncNow());
 
     el("periodo").addEventListener("change", render);
     el("cerca").addEventListener("input", render);
@@ -696,6 +905,9 @@
     });
 
     render();
+
+    // prova sync all'avvio (best-effort)
+    await syncNow();
   }
 
   init();
